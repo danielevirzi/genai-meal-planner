@@ -295,3 +295,71 @@ def test_alternative_crud_endpoints(tmp_path) -> None:
         assert response.status_code == 404
     finally:
         client_gen.close()
+
+
+def test_macronutrient_crud_endpoints(tmp_path) -> None:
+    client_gen = _make_client(tmp_path)
+    client = next(client_gen)
+    try:
+        response = client.get("/api/ingredients")
+        assert response.status_code == 200
+        items = response.json()["items"]
+        ingredient_ids = {item["name"]: item["id"] for item in items}
+        tempeh_response = client.post(
+            "/api/ingredients",
+            json={"name": "Tempeh", "category": "protein", "default_unit": "g"},
+        )
+        assert tempeh_response.status_code == 201
+        tempeh_id = tempeh_response.json()["id"]
+
+        create_payload = {
+            "ingredient_id": tempeh_id,
+            "calories_kcal": "192.00",
+            "protein_g": "20.30",
+            "carbs_g": "7.60",
+            "fat_g": "10.80",
+        }
+        response = client.post("/api/macronutrients", json=create_payload)
+        assert response.status_code == 201
+        created = response.json()
+        macronutrient_id = created["id"]
+        assert created["ingredient_id"] == tempeh_id
+        assert created["protein_g"] == "20.30"
+
+        duplicate_response = client.post("/api/macronutrients", json=create_payload)
+        assert duplicate_response.status_code == 409
+
+        response = client.put(
+            f"/api/macronutrients/{macronutrient_id}",
+            json={"protein_g": "21.00", "fat_g": "11.00"},
+        )
+        assert response.status_code == 200
+        updated = response.json()
+        assert updated["protein_g"] == "21.00"
+        assert updated["fat_g"] == "11.00"
+
+        response = client.get(
+            "/api/macronutrients",
+            params={"ingredient_id": tempeh_id},
+        )
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["meta"]["total"] == 1
+        assert payload["items"][0]["id"] == macronutrient_id
+
+        response = client.get(
+            "/api/macronutrients",
+            params={"ingredient_id": ingredient_ids["Chicken Breast"]},
+        )
+        assert response.status_code == 200
+        chicken_payload = response.json()
+        assert chicken_payload["meta"]["total"] == 1
+        assert len(chicken_payload["items"]) == 1
+
+        response = client.delete(f"/api/macronutrients/{macronutrient_id}")
+        assert response.status_code == 204
+
+        response = client.get(f"/api/macronutrients/{macronutrient_id}")
+        assert response.status_code == 404
+    finally:
+        client_gen.close()

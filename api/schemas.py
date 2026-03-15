@@ -77,6 +77,36 @@ class PriceListResponse(BaseModel):
     meta: PaginationMeta
 
 
+class MacronutrientBase(BaseModel):
+    ingredient_id: int
+    calories_kcal: Decimal = Field(ge=0)
+    protein_g: Decimal = Field(ge=0)
+    carbs_g: Decimal = Field(ge=0)
+    fat_g: Decimal = Field(ge=0)
+
+
+class MacronutrientCreate(MacronutrientBase):
+    pass
+
+
+class MacronutrientUpdate(BaseModel):
+    calories_kcal: Decimal | None = Field(default=None, ge=0)
+    protein_g: Decimal | None = Field(default=None, ge=0)
+    carbs_g: Decimal | None = Field(default=None, ge=0)
+    fat_g: Decimal | None = Field(default=None, ge=0)
+
+
+class MacronutrientRead(MacronutrientBase):
+    id: int
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class MacronutrientListResponse(BaseModel):
+    items: list[MacronutrientRead]
+    meta: PaginationMeta
+
+
 class AllergenBase(BaseModel):
     name: str = Field(min_length=1, max_length=80)
 

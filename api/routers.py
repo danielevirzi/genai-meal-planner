@@ -9,7 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from api.database import get_db
-from api.models import Allergen, Alternative, Ingredient, Price
+from api.models import Allergen, Alternative, Ingredient, Macronutrient, Price
 from api.schemas import (
     AllergenCreate,
     AllergenListResponse,
@@ -23,6 +23,10 @@ from api.schemas import (
     IngredientListResponse,
     IngredientRead,
     IngredientUpdate,
+    MacronutrientCreate,
+    MacronutrientListResponse,
+    MacronutrientRead,
+    MacronutrientUpdate,
     PaginationMeta,
     PriceCreate,
     PriceListResponse,
@@ -258,6 +262,127 @@ def delete_price(
         )
 
     db.delete(price)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get("/macronutrients", response_model=MacronutrientListResponse)
+def list_macronutrients(
+    db: DbDep,
+    ingredient_id: Annotated[int | None, Query(ge=1)] = None,
+    skip: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=300)] = 100,
+) -> MacronutrientListResponse:
+    statement = select(Macronutrient)
+    count_statement = select(func.count()).select_from(Macronutrient)
+
+    if ingredient_id is not None:
+        statement = statement.where(Macronutrient.ingredient_id == ingredient_id)
+        count_statement = count_statement.where(
+            Macronutrient.ingredient_id == ingredient_id
+        )
+
+    total = int(db.scalar(count_statement) or 0)
+    items = list(
+        db.scalars(statement.order_by(Macronutrient.id).offset(skip).limit(limit))
+    )
+    return MacronutrientListResponse(
+        items=items, meta=_build_meta(total=total, skip=skip, limit=limit)
+    )
+
+
+@router.get("/macronutrients/{macronutrient_id}", response_model=MacronutrientRead)
+def get_macronutrient(
+    macronutrient_id: Annotated[int, Path(ge=1)],
+    db: DbDep,
+) -> Macronutrient:
+    macronutrient = db.get(Macronutrient, macronutrient_id)
+    if macronutrient is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Macronutrient not found",
+        )
+    return macronutrient
+
+
+@router.post(
+    "/macronutrients",
+    response_model=MacronutrientRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_macronutrient(payload: MacronutrientCreate, db: DbDep) -> Macronutrient:
+    ingredient = db.get(Ingredient, payload.ingredient_id)
+    if ingredient is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Ingredient not found",
+        )
+
+    existing = db.scalar(
+        select(Macronutrient).where(
+            Macronutrient.ingredient_id == payload.ingredient_id
+        )
+    )
+    if existing is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Macronutrient profile for ingredient already exists",
+        )
+
+    macronutrient = Macronutrient(
+        ingredient_id=payload.ingredient_id,
+        calories_kcal=payload.calories_kcal,
+        protein_g=payload.protein_g,
+        carbs_g=payload.carbs_g,
+        fat_g=payload.fat_g,
+    )
+    db.add(macronutrient)
+    db.commit()
+    db.refresh(macronutrient)
+    return macronutrient
+
+
+@router.put(
+    "/macronutrients/{macronutrient_id}",
+    response_model=MacronutrientRead,
+)
+def update_macronutrient(
+    macronutrient_id: Annotated[int, Path(ge=1)],
+    payload: MacronutrientUpdate,
+    db: DbDep,
+) -> Macronutrient:
+    macronutrient = db.get(Macronutrient, macronutrient_id)
+    if macronutrient is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Macronutrient not found",
+        )
+
+    update_data = payload.model_dump(exclude_unset=True)
+    for field_name, value in update_data.items():
+        setattr(macronutrient, field_name, value)
+
+    db.commit()
+    db.refresh(macronutrient)
+    return macronutrient
+
+
+@router.delete(
+    "/macronutrients/{macronutrient_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_macronutrient(
+    macronutrient_id: Annotated[int, Path(ge=1)],
+    db: DbDep,
+) -> Response:
+    macronutrient = db.get(Macronutrient, macronutrient_id)
+    if macronutrient is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Macronutrient not found",
+        )
+
+    db.delete(macronutrient)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
