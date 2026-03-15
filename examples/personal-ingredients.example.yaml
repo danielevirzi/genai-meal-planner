@@ -1,0 +1,35 @@
+observed_at: 2026-03-15T10:00:00Z
+ingredients:
+  - name: Cannellini Beans
+    category: legumes
+    default_unit: g
+    allergens: []
+    macronutrients:
+      calories_kcal: 333.00
+      protein_g: 21.80
+      carbs_g: 60.50
+      fat_g: 1.40
+    prices:
+      - store_name: Discount Market
+        amount: 1.29
+        currency: EUR
+        unit_quantity: 0.500
+        unit: kg
+      - store_name: Neighborhood Shop
+        amount: 1.69
+        currency: EUR
+        unit_quantity: 0.500
+        unit: kg
+    alternatives:
+      - ingredient_name: Butter Beans
+        substitution_ratio: 1.000
+        note: Similar pantry staple.
+  - name: Butter Beans
+    category: legumes
+    default_unit: g
+    allergens: []
+    macronutrients:
+      calories_kcal: 341.00
+      protein_g: 20.10
+      carbs_g: 63.40
+      fat_g: 1.10

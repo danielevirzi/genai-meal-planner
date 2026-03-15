@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections.abc import Generator
-
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import Session, sessionmaker
@@ -10,6 +9,7 @@ from api.database import Base, get_db
 from api.main import create_app
 from api.models import Allergen, Alternative, Ingredient, Macronutrient, Price
 from api.seeds import seed_mock_data
+from api.yaml_import import import_ingredient_catalog_file
 
 
 def _make_session(tmp_path) -> Session:
@@ -53,6 +53,63 @@ def _make_client(tmp_path) -> Generator[TestClient, None, None]:
 
     app.dependency_overrides.clear()
     engine.dispose()
+
+
+def _yaml_catalog_for_file_import() -> str:
+    return "\n".join(
+        [
+            "observed_at: 2026-03-15T09:00:00Z",
+            "ingredients:",
+            "  - name: Chickpea Pasta",
+            "    category: pantry",
+            "    default_unit: g",
+            "    allergens: []",
+            "    macronutrients:",
+            "      calories_kcal: 356.00",
+            "      protein_g: 21.40",
+            "      carbs_g: 58.20",
+            "      fat_g: 5.80",
+            "    prices:",
+            "      - store_name: Discount Market",
+            "        amount: 2.49",
+            "        currency: EUR",
+            "        unit_quantity: 0.500",
+            "        unit: kg",
+        ]
+    )
+
+
+def _yaml_catalog_for_endpoint_import() -> str:
+    return "\n".join(
+        [
+            "observed_at: 2026-03-15T10:00:00Z",
+            "ingredients:",
+            "  - name: Cannellini Beans",
+            "    category: legumes",
+            "    default_unit: g",
+            "    allergens: []",
+            "    macronutrients:",
+            "      calories_kcal: 333.00",
+            "      protein_g: 21.80",
+            "      carbs_g: 60.50",
+            "      fat_g: 1.40",
+            "    prices:",
+            "      - store_name: Discount Market",
+            "        amount: 1.29",
+            "        currency: EUR",
+            "        unit_quantity: 0.500",
+            "        unit: kg",
+            "      - store_name: Neighborhood Shop",
+            "        amount: 1.69",
+            "        currency: EUR",
+            "        unit_quantity: 0.500",
+            "        unit: kg",
+            "    alternatives:",
+            "      - ingredient_name: Brown Rice",
+            "        substitution_ratio: 1.000",
+            "        note: Pantry backup option.",
+        ]
+    )
 
 
 def test_seed_mock_data_populates_expected_catalog(tmp_path) -> None:
@@ -361,5 +418,75 @@ def test_macronutrient_crud_endpoints(tmp_path) -> None:
 
         response = client.get(f"/api/macronutrients/{macronutrient_id}")
         assert response.status_code == 404
+    finally:
+        client_gen.close()
+
+
+def test_yaml_file_import_service_is_idempotent(tmp_path) -> None:
+    yaml_file = tmp_path / "ingredient-catalog.yaml"
+    yaml_file.write_text(_yaml_catalog_for_file_import(), encoding="utf-8")
+
+    with _make_session(tmp_path) as session:
+        first_summary = import_ingredient_catalog_file(session, yaml_file)
+        second_summary = import_ingredient_catalog_file(session, yaml_file)
+
+        assert first_summary.ingredients_created == 1
+        assert first_summary.prices_created == 1
+        assert first_summary.macronutrients_created == 1
+        assert first_summary.processed_ingredient_names == ["Chickpea Pasta"]
+
+        assert second_summary.ingredients_updated == 1
+        assert second_summary.prices_updated == 1
+        assert second_summary.macronutrients_updated == 1
+
+        assert session.scalar(select(func.count()).select_from(Ingredient)) == 1
+        assert session.scalar(select(func.count()).select_from(Price)) == 1
+        assert session.scalar(select(func.count()).select_from(Macronutrient)) == 1
+
+
+def test_yaml_import_endpoint_upserts_personal_catalog(tmp_path) -> None:
+    client_gen = _make_client(tmp_path)
+    client = next(client_gen)
+    try:
+        yaml_content = _yaml_catalog_for_endpoint_import()
+        response = client.post(
+            "/api/imports/ingredients-yaml",
+            content=yaml_content,
+            headers={"Content-Type": "application/x-yaml"},
+        )
+        assert response.status_code == 200
+        summary = response.json()
+        assert summary["ingredients_created"] == 1
+        assert summary["prices_created"] == 2
+        assert summary["macronutrients_created"] == 1
+        assert summary["alternatives_created"] == 1
+        assert summary["processed_ingredient_names"] == ["Cannellini Beans"]
+
+        response = client.post(
+            "/api/imports/ingredients-yaml",
+            content=yaml_content,
+            headers={"Content-Type": "application/x-yaml"},
+        )
+        assert response.status_code == 200
+        summary = response.json()
+        assert summary["ingredients_updated"] == 1
+        assert summary["prices_updated"] == 2
+        assert summary["macronutrients_updated"] == 1
+        assert summary["alternatives_updated"] == 1
+
+        response = client.get("/api/ingredients", params={"name": "Cannellini"})
+        assert response.status_code == 200
+        ingredient_payload = response.json()
+        assert ingredient_payload["meta"]["total"] == 1
+        ingredient_id = ingredient_payload["items"][0]["id"]
+
+        response = client.get("/api/prices", params={"ingredient_id": ingredient_id})
+        assert response.status_code == 200
+        prices_payload = response.json()
+        assert prices_payload["meta"]["total"] == 2
+        assert sorted(item["store_name"] for item in prices_payload["items"]) == [
+            "Discount Market",
+            "Neighborhood Shop",
+        ]
     finally:
         client_gen.close()

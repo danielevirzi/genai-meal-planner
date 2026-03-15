@@ -4,7 +4,16 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response, status
+from fastapi import (
+    APIRouter,
+    Body,
+    Depends,
+    HTTPException,
+    Path,
+    Query,
+    Response,
+    status,
+)
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -23,6 +32,7 @@ from api.schemas import (
     IngredientListResponse,
     IngredientRead,
     IngredientUpdate,
+    IngredientYamlImportSummary,
     MacronutrientCreate,
     MacronutrientListResponse,
     MacronutrientRead,
@@ -33,6 +43,7 @@ from api.schemas import (
     PriceRead,
     PriceUpdate,
 )
+from api.yaml_import import IngredientCatalogImportError, import_ingredient_catalog_yaml
 
 
 DbDep = Annotated[Session, Depends(get_db)]
@@ -47,6 +58,29 @@ def _build_meta(total: int, skip: int, limit: int) -> PaginationMeta:
         limit=limit,
         has_more=(skip + limit) < total,
     )
+
+
+@router.post(
+    "/imports/ingredients-yaml",
+    response_model=IngredientYamlImportSummary,
+)
+def import_ingredients_yaml(
+    yaml_content: Annotated[
+        str,
+        Body(
+            media_type="application/x-yaml",
+            description="High-level ingredient catalog YAML document",
+        ),
+    ],
+    db: DbDep,
+) -> IngredientYamlImportSummary:
+    try:
+        return import_ingredient_catalog_yaml(db, yaml_content)
+    except IngredientCatalogImportError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=str(exc),
+        ) from exc
 
 
 @router.get("/ingredients", response_model=IngredientListResponse)

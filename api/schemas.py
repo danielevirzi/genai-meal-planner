@@ -15,6 +15,19 @@ class PaginationMeta(BaseModel):
     has_more: bool
 
 
+class IngredientYamlImportSummary(BaseModel):
+    ingredients_created: int = Field(default=0, ge=0)
+    ingredients_updated: int = Field(default=0, ge=0)
+    prices_created: int = Field(default=0, ge=0)
+    prices_updated: int = Field(default=0, ge=0)
+    macronutrients_created: int = Field(default=0, ge=0)
+    macronutrients_updated: int = Field(default=0, ge=0)
+    allergens_created: int = Field(default=0, ge=0)
+    alternatives_created: int = Field(default=0, ge=0)
+    alternatives_updated: int = Field(default=0, ge=0)
+    processed_ingredient_names: list[str] = Field(default_factory=list)
+
+
 class IngredientBase(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     category: str | None = Field(default=None, max_length=80)
