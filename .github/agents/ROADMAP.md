@@ -26,27 +26,46 @@ This document outlines the development phases for a deterministic multi-agent sy
 * \[✅\] Create **Pydantic** models for strict validation of API requests and responses.
 * \[✅\] Write basic unit tests for the endpoints.
 
-## **📍 Phase 2: LLM Integration, Guardrails & Metadata Extraction**
+## **📍 Phase 2: LLM Integration & Agent Foundations (Completed Core)**
 
-**Objective:** Integrate the Gemini API for generative tasks and database retrieval, while configuring GLiNER for prompt security and evaluation metadata.
+**Objective:** Establish a working Gemini + Pydantic AI foundation with typed agents, prompts, secure configuration, and deterministic tests.
 
-* \[ \] Set up the **Gemini API** integration (handling API keys and client setup).
-* \[ \] Configure Gemini to use **Structured Outputs** and **Tool Calling** so the LLM can autonomously query the FastAPI endpoints (from Phase 1\) to fetch necessary context (e.g., ingredient prices, nutritional info) based on the user's prompt.
-* \[ \] Implement a **GLiNER**\-based classifier to act as a **Guardrail**, evaluating the relevance of the user's input (e.g., blocking off-topic requests before routing them to the LLM).
-* \[ \] Configure **GLiNER** to extract specific entities from both the initial prompt and the final generated output to create structured **Metadata**.
-* \[ \] Integrate the metadata pipeline so these GLiNER-extracted data points are ready to be logged into **MLflow** for downstream evaluation and experiment tracking.
+* \[✅\] Set up **Gemini API** integration with centralized provider/model configuration and API-key resolution.
+* \[✅\] Configure default runtime for **Google Generative Language API** (non-Vertex) so `GOOGLE_API_KEY` works out of the box.
+* \[✅\] Implement reusable prompt templates/builders for Planner, Retriever, and Validator.
+* \[✅\] Implement **Pydantic AI** agents:
+  * Planner agent with structured output schema.
+  * Retriever agent with tool-calling hooks.
+  * Validator agent with structured issue reporting.
+* \[✅\] Add unit tests for prompts, Gemini configuration, and all agents using `TestModel`/override patterns.
+* \[✅\] Add secure env scaffolding (`.env.example` tracked, `.env` ignored) and documentation.
+* \[ \] Wire Retriever tool dependencies to real FastAPI endpoint clients (currently test doubles/mocks in unit tests).
 
-## **📍 Phase 3: Agents & Structured Generation (Pydantic AI & DSPy)**
+## **📍 Phase 3: Planning Intelligence & Optimization**
 
-**Objective:** Build the "brain" of the system, ensuring it consistently produces the correct format.
+**Objective:** Upgrade the Phase 2 foundation into production-grade meal-planning intelligence with richer schemas, deterministic constraint logic, and optimization.
 
-* \[ \] Define complex **Pydantic** schemas for the final output: Recipe, Meal, Day, WeeklyPlan, GroceryList.
-* \[ \] Implement the Planner Agent using **Pydantic AI**, connecting it to the Gemini API.
-* \[ \] Create a small dataset of examples (Prompt \-\> Valid Meal Plan).
-* \[ \] Configure **DSPy** to run prompt optimization for the Planner Agent, minimizing hallucinations and improving constraint adherence.
-* \[ \] Develop the deterministic logic or the Validator Agent to check constraints (e.g., calculating total cost vs. budget, cross-checking allergens).
+* \[ \] Expand planner output to final domain schemas: **Recipe, Meal, Day, WeeklyPlan, GroceryList**.
+* \[ \] Build deterministic validation logic for hard constraints (budget, allergens, macro targets, serving counts) and integrate into Validator flow.
+* \[ \] Create a curated dataset of examples (Prompt \-\> Valid Meal Plan) for quality benchmarking.
+* \[ \] Configure **DSPy** prompt optimization for Planner quality (constraint adherence, hallucination reduction, consistency).
+* \[ \] Define evaluation metrics and acceptance criteria to compare baseline vs optimized planner behavior.
+* \[ \] Prepare validator/planner feedback loop contract for LangGraph orchestration in Phase 5.
 
-## **📍 Phase 4: Multi-Agent Orchestration with LangGraph**
+## **📍 Phase 4: GLiNER Guardrails & Metadata Logic**
+
+**Objective:** Implement GLiNER-based relevance guardrails and deterministic metadata extraction as a first-class pipeline stage.
+
+* \[ \] Implement a **GLiNER** relevance classifier to block or reroute off-topic user requests before planning.
+* \[ \] Define and validate GLiNER label taxonomy for meal-planning entities (budget, allergens, goals, ingredient preferences, constraints).
+* \[ \] Build structured metadata extraction from:
+  * user input (intent, constraints, entities)
+  * final validated output (coverage, substitutions, unresolved gaps)
+* \[ \] Add confidence thresholds and fallback behavior for low-confidence GLiNER predictions.
+* \[ \] Define metadata contract/schema for downstream logging and evaluation in **MLflow**.
+* \[ \] Add unit tests for guardrail decisions and metadata extraction consistency.
+
+## **📍 Phase 5: Multi-Agent Orchestration with LangGraph**
 
 **Objective:** Unify all components into a cyclic and resilient workflow.
 
@@ -61,7 +80,7 @@ This document outlines the development phases for a deterministic multi-agent sy
   * If validate\_plan\_node returns errors and iteration\_count \< Max \-\> Return to generate\_plan\_node passing the errors.
   * If validate\_plan\_node passes \-\> Go to metadata\_extraction\_node, then output.
 
-## **📍 Phase 5: MLOps, Observability, and Deployment**
+## **📍 Phase 6: MLOps, Observability, and Deployment**
 
 **Objective:** Make the system monitorable, measurable, and ready for a production-like environment.
 
