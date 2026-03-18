@@ -24,6 +24,27 @@ Install dependencies (including dev/test tools):
 uv sync --all-groups
 ```
 
+## Environment setup
+
+Create your local environment file from the template:
+
+```bash
+cp .env.example .env
+```
+
+Then edit `.env` and set your local secrets and runtime options:
+
+- `GOOGLE_API_KEY`: your Gemini API key.
+- `GEMINI_MODEL_NAME`: model name (default: `gemini-2.5-flash-lite`).
+- `GOOGLE_VERTEXAI`: keep `false` for standard API key usage.
+- `DATABASE_URL`: database connection string.
+- `API_SEED_DATA`: whether to seed mock data on startup.
+
+Security note:
+
+- `.env` is git-ignored.
+- `.env.example` is tracked and contains only placeholders.
+
 ## Run the API (development)
 
 ```bash
