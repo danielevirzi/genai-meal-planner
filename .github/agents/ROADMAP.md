@@ -39,7 +39,7 @@ This document outlines the development phases for a deterministic multi-agent sy
   * Validator agent with structured issue reporting.
 * \[✅\] Add unit tests for prompts, Gemini configuration, and all agents using `TestModel`/override patterns.
 * \[✅\] Add secure env scaffolding (`.env.example` tracked, `.env` ignored) and documentation.
-* \[ \] Wire Retriever tool dependencies to real FastAPI endpoint clients (currently test doubles/mocks in unit tests).
+* \[✅\] Wire Retriever tool dependencies to real FastAPI endpoint clients (HTTP-backed client with configurable `MEAL_PLANNER_API_BASE_URL` + tests).
 
 ## **📍 Phase 3: Planning Intelligence & Optimization**
 

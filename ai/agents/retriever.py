@@ -2,14 +2,20 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from typing import Any, Callable, Literal
 
+import httpx
 from pydantic import BaseModel, Field, model_validator
 from pydantic_ai import Agent, RunContext
 
 from ai.agents.gemini import GeminiSettings, build_google_model
 from ai.prompts import RETRIEVER_SYSTEM_PROMPT, build_retriever_user_prompt
+
+
+DEFAULT_API_BASE_URL = "http://127.0.0.1:8000"
+DEFAULT_API_TIMEOUT_SEC = 10.0
 
 
 class RetrievedFact(BaseModel):
@@ -111,6 +117,82 @@ class RetrieverDependencies:
     get_macronutrient: ListMacrosFn
 
 
+class FastAPIRetrieverClient:
+    """HTTP client that fetches retrieval context from FastAPI endpoints."""
+
+    def __init__(self, *, base_url: str, timeout_sec: float = DEFAULT_API_TIMEOUT_SEC):
+        self.base_url = base_url.rstrip("/")
+        self.timeout_sec = timeout_sec
+
+    def _get(self, path: str, *, params: dict[str, Any]) -> dict[str, Any]:
+        url = f"{self.base_url}{path}"
+        try:
+            with httpx.Client(timeout=self.timeout_sec) as client:
+                response = client.get(url, params=params)
+                response.raise_for_status()
+                payload = response.json()
+                if not isinstance(payload, dict):
+                    raise RuntimeError(f"Expected JSON object from {url}")
+                return payload
+        except httpx.HTTPError as exc:
+            raise RuntimeError(
+                f"Retriever endpoint request failed for {url}: {exc}"
+            ) from exc
+
+    def list_ingredients(
+        self,
+        name: str | None,
+        category: str | None,
+        limit: int,
+    ) -> dict[str, Any]:
+        params: dict[str, Any] = {"limit": limit}
+        if name:
+            params["name"] = name
+        if category:
+            params["category"] = category
+        return self._get("/api/ingredients", params=params)
+
+    def list_prices(self, ingredient_id: int, limit: int) -> dict[str, Any]:
+        return self._get(
+            "/api/prices",
+            params={"ingredient_id": ingredient_id, "limit": limit},
+        )
+
+    def get_macronutrient(self, ingredient_id: int) -> dict[str, Any]:
+        payload = self._get(
+            "/api/macronutrients",
+            params={"ingredient_id": ingredient_id, "limit": 1},
+        )
+        items = payload.get("items")
+        if isinstance(items, list) and items:
+            first = items[0]
+            if isinstance(first, dict):
+                return first
+        return {
+            "ingredient_id": ingredient_id,
+            "missing": True,
+            "detail": "No macronutrient profile found for ingredient.",
+        }
+
+
+def build_retriever_dependencies(
+    *,
+    base_url: str | None = None,
+    timeout_sec: float = DEFAULT_API_TIMEOUT_SEC,
+) -> RetrieverDependencies:
+    """Build production retriever dependencies wired to FastAPI endpoints."""
+
+    resolved_base_url = base_url or os.getenv(
+        "MEAL_PLANNER_API_BASE_URL", DEFAULT_API_BASE_URL
+    )
+    client = FastAPIRetrieverClient(base_url=resolved_base_url, timeout_sec=timeout_sec)
+    return RetrieverDependencies(
+        list_ingredients=client.list_ingredients,
+        list_prices=client.list_prices,
+        get_macronutrient=client.get_macronutrient,
+    )
+
+
 def create_retriever_agent(
     *,
     model: Any | None = None,
@@ -174,9 +256,10 @@ def run_retriever(
     request: RetrieverRequest,
     *,
     agent: Agent[RetrieverDependencies, RetrieverOutput],
-    deps: RetrieverDependencies,
+    deps: RetrieverDependencies | None = None,
 ) -> RetrieverOutput:
     """Run retriever synchronously and return validated retrieval context."""
 
     prompt = build_retriever_prompt(request)
-    return agent.run_sync(prompt, deps=deps).output
+    dependencies = deps or build_retriever_dependencies()
+    return agent.run_sync(prompt, deps=dependencies).output

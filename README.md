@@ -37,6 +37,7 @@ Then edit `.env` and set your local secrets and runtime options:
 - `GOOGLE_API_KEY`: your Gemini API key.
 - `GEMINI_MODEL_NAME`: model name (default: `gemini-2.5-flash-lite`).
 - `GOOGLE_VERTEXAI`: keep `false` for standard API key usage.
+- `MEAL_PLANNER_API_BASE_URL`: base URL used by the Retriever FastAPI HTTP client (default: `http://127.0.0.1:8000`).
 - `DATABASE_URL`: database connection string.
 - `API_SEED_DATA`: whether to seed mock data on startup.
 
@@ -127,6 +128,19 @@ ingredients:
 - Allergens: /api/allergens
 - Alternatives: /api/alternatives
 - YAML import: /api/imports/ingredients-yaml
+
+## Retriever endpoint client
+
+The Retriever agent is wired to call real FastAPI endpoints through an HTTP client.
+
+- Default base URL: `http://127.0.0.1:8000`
+- Override with env var: `MEAL_PLANNER_API_BASE_URL`
+- Endpoints used by retriever tools:
+  - `GET /api/ingredients`
+  - `GET /api/prices`
+  - `GET /api/macronutrients`
+
+Run the API before running retriever flows that rely on live endpoint calls.
 
 ## Notes
 

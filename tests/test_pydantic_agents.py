@@ -5,6 +5,7 @@ from typing import Any
 import pytest
 from pydantic_ai.models.test import TestModel
 import ai.agents.gemini as gemini_module
+import ai.agents.retriever as retriever_module
 
 from ai.agents.gemini import GeminiSettings, build_google_model
 from ai.agents.planner import (
@@ -15,9 +16,11 @@ from ai.agents.planner import (
     run_planner,
 )
 from ai.agents.retriever import (
+    FastAPIRetrieverClient,
     RetrieverDependencies,
     RetrieverOutput,
     RetrieverRequest,
+    build_retriever_dependencies,
     create_retriever_agent,
     run_retriever,
 )
@@ -215,6 +218,75 @@ def test_retriever_agent_registers_tools_and_runs_with_test_model(
 
     assert "Tofu" in result.ingredient_candidates
     assert result.facts[0].source == "prices"
+
+
+def test_build_retriever_dependencies_uses_real_client_methods() -> None:
+    deps = build_retriever_dependencies(
+        base_url="http://localhost:9999", timeout_sec=5.0
+    )
+
+    assert isinstance(deps, RetrieverDependencies)
+    assert deps.list_ingredients.__self__.__class__.__name__ == "FastAPIRetrieverClient"
+    assert deps.list_prices.__self__.__class__.__name__ == "FastAPIRetrieverClient"
+    assert (
+        deps.get_macronutrient.__self__.__class__.__name__ == "FastAPIRetrieverClient"
+    )
+
+
+def test_fastapi_retriever_client_calls_expected_endpoints(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, dict[str, Any]]] = []
+
+    class DummyResponse:
+        def __init__(self, payload: dict[str, Any]) -> None:
+            self._payload = payload
+
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, Any]:
+            return self._payload
+
+    class DummyClient:
+        def __init__(self, *, timeout: float) -> None:
+            self.timeout = timeout
+
+        def __enter__(self) -> "DummyClient":
+            return self
+
+        def __exit__(self, exc_type, exc, tb) -> bool:
+            return False
+
+        def get(self, url: str, params: dict[str, Any]) -> DummyResponse:
+            calls.append((url, params))
+            if url.endswith("/api/macronutrients"):
+                return DummyResponse(
+                    {
+                        "items": [
+                            {
+                                "ingredient_id": 1,
+                                "protein_g": "16.00",
+                            }
+                        ]
+                    }
+                )
+            return DummyResponse({"items": [], "meta": {"total": 0}})
+
+    monkeypatch.setattr(retriever_module.httpx, "Client", DummyClient)
+
+    client = FastAPIRetrieverClient(base_url="http://localhost:8000", timeout_sec=3.0)
+    client.list_ingredients(name="tofu", category="protein", limit=5)
+    client.list_prices(ingredient_id=1, limit=10)
+    macro = client.get_macronutrient(ingredient_id=1)
+
+    assert calls[0][0].endswith("/api/ingredients")
+    assert calls[0][1] == {"limit": 5, "name": "tofu", "category": "protein"}
+    assert calls[1][0].endswith("/api/prices")
+    assert calls[1][1] == {"ingredient_id": 1, "limit": 10}
+    assert calls[2][0].endswith("/api/macronutrients")
+    assert calls[2][1] == {"ingredient_id": 1, "limit": 1}
+    assert macro["protein_g"] == "16.00"
 
 
 def test_validator_agent_factory_and_run_with_test_model(
